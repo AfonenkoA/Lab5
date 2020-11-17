@@ -9,6 +9,7 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import javax.swing.*;
 
 public class GraphicsDisplay extends JPanel
@@ -39,6 +40,39 @@ public class GraphicsDisplay extends JPanel
     private boolean showFilling = false;
     private boolean selection = false;
     private Double[] chosenPoint = null;
+    private boolean changingRange = false;
+    private Point startRangePoint = null;
+    private Point finishRangePoint = null;
+    private BasicStroke rangeStroke;
+    private ArrayList<Range> ranges;
+
+    private Range pointsToRange(Point p1, Point p2)
+    {
+        Double[] xy1 = pointToXY(p1);
+        Double[] xy2 = pointToXY(p2);
+
+        return new Range(
+                Math.min(xy1[0],xy2[0]),
+                Math.max(xy1[0],xy2[0]),
+                Math.min(xy1[1],xy2[1]),
+                Math.max(xy1[1],xy2[1]));
+    }
+
+    private class Range
+    {
+        public Double minX;
+        public Double maxX;
+        public Double minY;
+        public Double maxY;
+
+        public Range(Double minX, Double maxX, Double minY, Double maxY)
+        {
+            this.minX = minX;
+            this.maxX = maxX;
+            this.minY = minY;
+            this.maxY = maxY;
+        }
+    }
 
     public GraphicsDisplay()
     {
@@ -50,6 +84,7 @@ public class GraphicsDisplay extends JPanel
         // Перо для рисования графика
         float[] graphDash = new float[]{4, 1, 1, 1, 1, 1, 2, 1, 2};
         graphicsStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10.0f, graphDash, 0.0f);
+        rangeStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10.0f, new float[]{2,1,3,1}, 0.0f);
         // Перо для рисования осей координат
         axisStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
         // Перо для рисования контуров маркеров
@@ -73,10 +108,59 @@ public class GraphicsDisplay extends JPanel
     {
         // Сохранить массив точек во внутреннем поле класса
         this.graphicsData = graphicsData;
+        ranges = new ArrayList<>();
         // Запросить перерисовку компонента, т.е. неявно вызвать paintComponent();
+        Iterator<Double> xit = new Iterator<>() {
+            private int i = 0;
+            @Override
+            public boolean hasNext()
+            {
+                return i < graphicsData.length;
+            }
+
+            @Override
+            public Double next()
+            {
+                return graphicsData[i++][0];
+            }
+        };
+        Iterator<Double> yit = new Iterator<>() {
+            private int i = 0;
+            @Override
+            public boolean hasNext()
+            {
+                return i < graphicsData.length;
+            }
+            @Override
+            public Double next()
+            {
+                return graphicsData[i++][1];
+            }
+        };
+        double minX = Double.MAX_VALUE;
+        double maxX = -Double.MAX_VALUE;
+        double minY = Double.MAX_VALUE;
+        double maxY = -Double.MAX_VALUE;
+        while (xit.hasNext())
+        {
+            double next = xit.next();
+            if(Double.compare(next,minX)<0)
+                minX = next;
+            if(Double.compare(next,maxX)>0)
+                maxX = next;
+        }
+
+        while (yit.hasNext())
+        {
+            double next = yit.next();
+            if(Double.compare(next,minY)<0)
+                minY = next;
+            if(Double.compare(next,maxY)>0)
+                maxY = next;
+        }
+        ranges.add(new Range(minX,maxX,minY,maxY));
         repaint();
     }
-
     // Методы-модификаторы для изменения параметров отображения графика
     // Изменение любого параметра приводит к перерисовке области
     public void setShowAxis(boolean showAxis)
@@ -106,40 +190,19 @@ public class GraphicsDisplay extends JPanel
         super.paintComponent(g);
         // Шаг 2 - Если данные графика не загружены (при показе компонента при запуске программы) - ничего не делать
         if (graphicsData == null || graphicsData.length == 0) return;
-        // Шаг 3 - Определить минимальное и максимальное значения для координат X и Y
-        // Это необходимо для определения области пространства, подлежащей отображению
-        // Еѐ верхний левый угол это (minX, maxY) - правый нижний это (maxX, minY)
-        minX = graphicsData[0][0];
-        maxX = graphicsData[graphicsData.length - 1][0];
-        minY = graphicsData[0][1];
-        maxY = minY;
-        // Найти минимальное и максимальное значение функции
-        for (int i = 1; i < graphicsData.length; i++)
-        {
-            if (graphicsData[i][1] < minY)
-            {
-                minY = graphicsData[i][1];
-            }
-            if (graphicsData[i][1] > maxY)
-            {
-                maxY = graphicsData[i][1];
-            }
-        }
-        /* Шаг 4 - Определить (исходя из размеров окна) масштабы по осям X и Y - сколько пикселов
-         * приходится на единицу длины по X и по Y */
+
+        Range r = ranges.get(ranges.size()-1);
+        maxX = r.maxX;
+        minX = r.minX;
+        maxY = r.maxY;
+        minY = r.minY;
+
+
         double scaleX = getSize().getWidth() / (maxX - minX);
         double scaleY = getSize().getHeight() / (maxY - minY);
-        // Шаг 5 - Чтобы изображение было неискажѐнным - масштаб должен быть одинаков
-        // Выбираем за основу минимальный
         scale = Math.min(scaleX, scaleY);
-        // Шаг 6 - корректировка границ отображаемой области согласно выбранному масштабу
         if (scale == scaleX)
-        { /* Если за основу был взят масштаб по оси X, значит по оси Y делений меньше,
-         * т.е. подлежащий визуализации диапазон по Y будет меньше высоты окна.
-         * Значит необходимо добавить делений, сделаем это так:
-         * 1) Вычислим, сколько делений влезет по Y при выбранном масштабе - getSize().getHeight()/scale
-         * 2) Вычтем из этого сколько делений требовалось изначально
-         * 3) Набросим по половине недостающего расстояния на maxY и minY */
+        {
             double yIncrement = (getSize().getHeight() / scale - (maxY - minY)) / 2;
             maxY += yIncrement;
             minY -= yIncrement;
@@ -162,12 +225,7 @@ public class GraphicsDisplay extends JPanel
         // Порядок вызова методов имеет значение, т.к. предыдущий рисунок будет затираться последующим
         // Первыми (если нужно) отрисовываются оси координат.
         if (isRotated)
-        {
-            //AffineTransform ntr = new AffineTransform(canvas.getTransform());
-            //canvas.setTransform(ntr);
-            //ntr.scale(0.5,0.5);
             canvas.rotate(Math.toRadians(-90), getSize().getWidth() / 2, getSize().getHeight() / 2);
-        }
         if (showFilling) paintFilling(canvas);
         if (showAxis) paintAxis(canvas);
         // Затем отображается сам график
@@ -187,7 +245,16 @@ public class GraphicsDisplay extends JPanel
 
             canvas.drawString(coordinatesString, pointX + 5, pointY - 8);
         }
-
+        if(changingRange)
+        {
+            canvas.setColor(Color.BLACK);
+            canvas.setStroke(rangeStroke);
+            canvas.draw(new Rectangle2D.Double(
+                    startRangePoint.x,
+                    startRangePoint.y,
+                    finishRangePoint.x-startRangePoint.x,
+                    finishRangePoint.y-startRangePoint.y));
+        }
         canvas.setFont(oldFont);
         canvas.setPaint(oldPaint);
         canvas.setColor(oldColor);
@@ -474,13 +541,20 @@ public class GraphicsDisplay extends JPanel
     private class TMouseAdapter extends MouseAdapter
     {
         @Override
-
         public void mousePressed(MouseEvent ev)
         {
             if (SwingUtilities.isLeftMouseButton(ev) && chosenPoint!=null)
             {
                 selection = true;
             }
+            else
+            if(ranges!=null && SwingUtilities.isLeftMouseButton(ev))
+            {
+                changingRange = true;
+                startRangePoint = ev.getPoint();
+                finishRangePoint = startRangePoint;
+            }
+            repaint();
         }
 
         @Override
@@ -489,7 +563,27 @@ public class GraphicsDisplay extends JPanel
             if (SwingUtilities.isLeftMouseButton(ev))
             {
                 selection = false;
+                changingRange = false;
+                if(ranges!=null)
+                {
+                    finishRangePoint = ev.getPoint();
+                    ranges.add(pointsToRange(startRangePoint, finishRangePoint));
+                }
             }
+            repaint();
+        }
+
+        @Override
+        public void mouseClicked(MouseEvent ev)
+        {
+            if(SwingUtilities.isRightMouseButton(ev))
+            {
+                if(ranges!=null && ranges.size()!=1)
+                {
+                    ranges.remove(ranges.size()-1);
+                }
+            }
+            repaint();
         }
     }
 
@@ -500,10 +594,13 @@ public class GraphicsDisplay extends JPanel
         {
             if (selection)
             {
-                System.out.println("3");
                 Double[] xy = pointToXY(e.getPoint());
                 chosenPoint[0] = xy[0];
                 chosenPoint[1] = xy[1];
+            }
+            if(changingRange)
+            {
+                finishRangePoint = e.getPoint();
             }
             repaint();
         }
