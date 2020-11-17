@@ -1,18 +1,12 @@
 import java.awt.BorderLayout;
 import java.awt.event.ActionEvent;
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.DoubleBuffer;
 import java.nio.channels.FileChannel;
 
-import javax.swing.AbstractAction;
-import javax.swing.Action;
-import javax.swing.JCheckBoxMenuItem;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
-import javax.swing.JOptionPane;
+import javax.swing.*;
 import javax.swing.event.MenuEvent;
 import javax.swing.event.MenuListener;
 
@@ -28,6 +22,7 @@ public class MainFrame extends JFrame
     private final JCheckBoxMenuItem showMarkersMenuItem;
     private final JCheckBoxMenuItem showRotatedMenuItem;
     private final JCheckBoxMenuItem showFillingMenuItem;
+    private final JMenuItem saveToFileMenuItem;
     // Компонент-отображатель графика
     private final GraphicsDisplay display = new GraphicsDisplay();
     // Флаг, указывающий на загруженность данных графика
@@ -109,6 +104,20 @@ public class MainFrame extends JFrame
                 display.setShowFilling(showFillingMenuItem.isSelected());
             }
         };
+        Action saveToFileAction = new AbstractAction("Сохранить в файл") {
+            @Override
+            public void actionPerformed(ActionEvent e)
+            {
+                if(fileChooser.showSaveDialog(MainFrame.this)==JFileChooser.APPROVE_OPTION)
+                {
+                    saveGraphics(fileChooser.getSelectedFile());
+                }
+            }
+        };
+        saveToFileMenuItem = new JMenuItem(saveToFileAction);
+        fileMenu.add(saveToFileMenuItem);
+        fileMenu.addMenuListener(new FileMenuListener());
+        saveToFileMenuItem.setEnabled(false);
         showFillingMenuItem = new JCheckBoxMenuItem(showFillingAction);
         graphicsMenu.add(showFillingMenuItem);
         showRotatedMenuItem = new JCheckBoxMenuItem(showRotatedAction);
@@ -126,6 +135,27 @@ public class MainFrame extends JFrame
     }
 
     // Считывание данных графика из существующего файла
+    protected void saveGraphics(File selectedFile)
+    {
+        Double[][] graphicsData = display.getGraphicsData();
+        try(FileChannel fc = new RandomAccessFile(selectedFile,"rw").getChannel())
+        {
+            ByteBuffer buffer = ByteBuffer.allocate(graphicsData.length*2*Double.BYTES);
+            buffer.order(ByteOrder.nativeOrder());
+            for (int i = 0; i < graphicsData.length; i++)
+            {
+                buffer.putDouble(graphicsData[i][0]);
+                buffer.putDouble(graphicsData[i][1]);
+            }
+            buffer.flip();
+            fc.write(buffer);
+        }
+        catch (IOException e)
+        {
+            e.printStackTrace();
+        }
+    }
+
     protected void openGraphics(File selectedFile)
     {
         try(FileChannel fc = new RandomAccessFile(selectedFile, "rw").getChannel())
@@ -156,6 +186,27 @@ public class MainFrame extends JFrame
             // В случае ошибки ввода из файлового потока показать сообщение об ошибке
             JOptionPane.showMessageDialog(MainFrame.this, "Ошибка чтения координат точек из файла", "Ошибка загрузки " +
                     "данных", JOptionPane.WARNING_MESSAGE);
+        }
+    }
+    private class FileMenuListener implements MenuListener
+    {
+
+        @Override
+        public void menuSelected(MenuEvent e)
+        {
+            saveToFileMenuItem.setEnabled(fileLoaded);
+        }
+
+        @Override
+        public void menuDeselected(MenuEvent e)
+        {
+
+        }
+
+        @Override
+        public void menuCanceled(MenuEvent e)
+        {
+
         }
     }
 // Класс-слушатель событий, связанных с отображением меню

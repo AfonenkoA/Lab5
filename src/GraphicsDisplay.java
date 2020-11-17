@@ -487,7 +487,10 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
             }
 
         }
-
         repaint();
+    }
+    public Double[][] getGraphicsData()
+    {
+        return graphicsData;
     }
 }
