@@ -1,4 +1,6 @@
 import java.awt.*;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseMotionListener;
 import java.awt.font.FontRenderContext;
 import java.awt.geom.*;
 import java.text.DecimalFormat;
@@ -6,11 +8,9 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import javax.swing.JPanel;
 
-public class GraphicsDisplay extends JPanel
+public class GraphicsDisplay extends JPanel implements MouseMotionListener
 {
     // Список координат точек для построения графика
     private Double[][] graphicsData;
@@ -30,11 +30,18 @@ public class GraphicsDisplay extends JPanel
     private final BasicStroke markerStroke;
     // Различные шрифты отображения надписей
     private final Font axisFont;
+    private final Font coordinatesFont;
     private boolean isRotated = false;
     private boolean showFilling = false;
+    private final DecimalFormat formatter;
+    private final Cursor defaultCursor;
+    private final Cursor pointCursor;
+
+    private Double[] chosenPoint = null;
 
     public GraphicsDisplay()
     {
+        addMouseMotionListener(this);
         // Цвет заднего фона области отображения - белый
         setBackground(Color.WHITE);
         // Сконструировать необходимые объекты, используемые в рисовании
@@ -47,6 +54,15 @@ public class GraphicsDisplay extends JPanel
         markerStroke = new BasicStroke(1.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
         // Шрифт для подписей осей координат
         axisFont = new Font("Serif", Font.BOLD, 36);
+        coordinatesFont = new Font("Serif", Font.BOLD, 15);
+        formatter = (DecimalFormat) NumberFormat.getInstance();
+        formatter.setMaximumFractionDigits(2);
+        formatter.setGroupingUsed(false);
+        DecimalFormatSymbols dottedDouble = formatter.getDecimalFormatSymbols();
+        dottedDouble.setDecimalSeparator('.');
+        formatter.setDecimalFormatSymbols(dottedDouble);
+        defaultCursor = getCursor();
+        pointCursor = new Cursor(Cursor.HAND_CURSOR);
     }
 
     // Данный метод вызывается из обработчика элемента меню "Открыть файл с графиком"
@@ -155,7 +171,17 @@ public class GraphicsDisplay extends JPanel
         // Затем (если нужно) отображаются маркеры точек, по которым строился график.
         if (showMarkers) paintMarkers(canvas);
         // Шаг 9 - Восстановить старые настройки холста
+        if(chosenPoint!=null)
+        {
+            Point2D.Double point = xyToPoint(chosenPoint[0],chosenPoint[1]);
+            float pointX =(float) point.x;
+            float pointY = (float) point.y;
+            canvas.setFont(coordinatesFont);
+            canvas.setColor(Color.BLACK);
+            String coordinatesString ="X: " + formatter.format(chosenPoint[0]) +" Y: " + formatter.format(chosenPoint[1]);
 
+            canvas.drawString(coordinatesString, pointX+5,pointY-8);
+        }
 
         canvas.setFont(oldFont);
         canvas.setPaint(oldPaint);
@@ -210,7 +236,8 @@ public class GraphicsDisplay extends JPanel
         canvas.setStroke(markerStroke);
         // Выбрать красный цвета для контуров маркеров
         Color defaultColor = Color.RED;
-        Color highlightColor = Color.BLUE;
+        Color highlightColor = Color.BLACK;
+        Color chosenColor = Color.BLUE;
         canvas.setColor(defaultColor);
         canvas.setPaint(defaultColor);
         for (Double[] point : graphicsData)
@@ -219,6 +246,11 @@ public class GraphicsDisplay extends JPanel
             {
                 canvas.setColor(highlightColor);
                 canvas.setPaint(highlightColor);
+            }
+            if(chosenPoint == point)
+            {
+                canvas.setColor(chosenColor);
+                canvas.setPaint(chosenColor);
             }
             Point2D.Double center = xyToPoint(point[0], point[1]);
             Point2D.Double leftTop = shiftPoint(center, -5, -5);
@@ -276,13 +308,6 @@ public class GraphicsDisplay extends JPanel
 
         for(int in = 0; in < zeroes.size()-1; in++)
             polygons.add(new ArrayList<>(points.subList(zeroes.get(in),zeroes.get(in + 1)+1)));
-
-        DecimalFormat formatter = (DecimalFormat) NumberFormat.getInstance();
-        formatter.setMaximumFractionDigits(5);
-        formatter.setGroupingUsed(false);
-        DecimalFormatSymbols dottedDouble = formatter.getDecimalFormatSymbols();
-        dottedDouble.setDecimalSeparator('.');
-        formatter.setDecimalFormatSymbols(dottedDouble);
 
         for (ArrayList<Double[]> polygon : polygons)
         {
@@ -425,6 +450,44 @@ public class GraphicsDisplay extends JPanel
     public void setShowFilling(boolean showFilling)
     {
         this.showFilling = showFilling;
+        repaint();
+    }
+    private Double[] pointToXY(Point p)
+    {
+        return new Double[]{p.x/scale+minX,maxY-p.y/scale};
+    }
+    @Override
+    public void mouseDragged(MouseEvent e)
+    {
+
+    }
+
+    @Override
+    public void mouseMoved(MouseEvent e)
+    {
+        setCursor(defaultCursor);
+        chosenPoint =null;
+        int mouseX = e.getX();
+        int mouseY = e.getY();
+        int pointX;
+        int pointY;
+        if(graphicsData!=null)
+        {
+            for (Double[] xy : graphicsData)
+            {
+                Point2D.Double point = xyToPoint(xy[0], xy[1]);
+                pointX = (int) point.x;
+                pointY = (int) point.y;
+                if (Math.abs(mouseX - pointX) <= 5 && Math.abs(mouseY - pointY) <= 5)
+                {
+                    chosenPoint = xy;
+                    setCursor(pointCursor);
+                    break;
+                }
+            }
+
+        }
+
         repaint();
     }
 }
