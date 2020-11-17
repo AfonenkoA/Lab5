@@ -1,4 +1,5 @@
 import java.awt.*;
+import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseMotionListener;
 import java.awt.font.FontRenderContext;
@@ -8,10 +9,20 @@ import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import javax.swing.JPanel;
+import javax.swing.*;
 
-public class GraphicsDisplay extends JPanel implements MouseMotionListener
+public class GraphicsDisplay extends JPanel
 {
+    // Различные стили черчения линий
+    private final BasicStroke graphicsStroke;
+    private final BasicStroke axisStroke;
+    private final BasicStroke markerStroke;
+    // Различные шрифты отображения надписей
+    private final Font axisFont;
+    private final Font coordinatesFont;
+    private final DecimalFormat formatter;
+    private final Cursor defaultCursor;
+    private final Cursor pointCursor;
     // Список координат точек для построения графика
     private Double[][] graphicsData;
     // Флаговые переменные, задающие правила отображения графика
@@ -24,29 +35,20 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
     private double maxY;
     // Используемый масштаб отображения
     private double scale;
-    // Различные стили черчения линий
-    private final BasicStroke graphicsStroke;
-    private final BasicStroke axisStroke;
-    private final BasicStroke markerStroke;
-    // Различные шрифты отображения надписей
-    private final Font axisFont;
-    private final Font coordinatesFont;
     private boolean isRotated = false;
     private boolean showFilling = false;
-    private final DecimalFormat formatter;
-    private final Cursor defaultCursor;
-    private final Cursor pointCursor;
-
+    private boolean selection = false;
     private Double[] chosenPoint = null;
 
     public GraphicsDisplay()
     {
-        addMouseMotionListener(this);
+        addMouseMotionListener(new TMouseMotionListener());
+        addMouseListener(new TMouseAdapter());
         // Цвет заднего фона области отображения - белый
         setBackground(Color.WHITE);
         // Сконструировать необходимые объекты, используемые в рисовании
         // Перо для рисования графика
-        float[] graphDash = new float[]{4,1,1,1,1,1,2,1,2};
+        float[] graphDash = new float[]{4, 1, 1, 1, 1, 1, 2, 1, 2};
         graphicsStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND, 10.0f, graphDash, 0.0f);
         // Перо для рисования осей координат
         axisStroke = new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, null, 0.0f);
@@ -88,11 +90,13 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
         this.showMarkers = showMarkers;
         repaint();
     }
+
     public void setRotated(boolean rotated)
     {
         isRotated = rotated;
         repaint();
     }
+
     // Метод отображения всего компонента, содержащего график
     public void paintComponent(Graphics g)
     {
@@ -157,30 +161,31 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
         // Шаг 8 - В нужном порядке вызвать методы отображения элементов графика
         // Порядок вызова методов имеет значение, т.к. предыдущий рисунок будет затираться последующим
         // Первыми (если нужно) отрисовываются оси координат.
-        if(isRotated)
+        if (isRotated)
         {
             //AffineTransform ntr = new AffineTransform(canvas.getTransform());
             //canvas.setTransform(ntr);
             //ntr.scale(0.5,0.5);
             canvas.rotate(Math.toRadians(-90), getSize().getWidth() / 2, getSize().getHeight() / 2);
         }
-        if(showFilling) paintFilling(canvas);
+        if (showFilling) paintFilling(canvas);
         if (showAxis) paintAxis(canvas);
         // Затем отображается сам график
         paintGraphics(canvas);
         // Затем (если нужно) отображаются маркеры точек, по которым строился график.
         if (showMarkers) paintMarkers(canvas);
         // Шаг 9 - Восстановить старые настройки холста
-        if(chosenPoint!=null)
+        if (chosenPoint != null)
         {
-            Point2D.Double point = xyToPoint(chosenPoint[0],chosenPoint[1]);
-            float pointX =(float) point.x;
+            Point2D.Double point = xyToPoint(chosenPoint[0], chosenPoint[1]);
+            float pointX = (float) point.x;
             float pointY = (float) point.y;
             canvas.setFont(coordinatesFont);
             canvas.setColor(Color.BLACK);
-            String coordinatesString ="X: " + formatter.format(chosenPoint[0]) +" Y: " + formatter.format(chosenPoint[1]);
+            String coordinatesString =
+                    "X: " + formatter.format(chosenPoint[0]) + " Y: " + formatter.format(chosenPoint[1]);
 
-            canvas.drawString(coordinatesString, pointX+5,pointY-8);
+            canvas.drawString(coordinatesString, pointX + 5, pointY - 8);
         }
 
         canvas.setFont(oldFont);
@@ -223,12 +228,13 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
         Double y = point[1];
         StringBuilder sb = new StringBuilder(y.toString());
         sb.deleteCharAt(sb.indexOf("."));
-        String s = sb.substring(0,Math.min(10,sb.length()));
+        String s = sb.substring(0, Math.min(10, sb.length()));
         char c = s.charAt(0);
         int i = 0;
-        while (i<s.length() && c++==s.charAt(i++));
+        while (i < s.length() && c++ == s.charAt(i++)) ;
         return i == s.length();
     }
+
     // Отображение маркеров точек, по которым рисовался график
     protected void paintMarkers(Graphics2D canvas)
     {
@@ -242,12 +248,12 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
         canvas.setPaint(defaultColor);
         for (Double[] point : graphicsData)
         {
-            if(checkPoint(point))
+            if (checkPoint(point))
             {
                 canvas.setColor(highlightColor);
                 canvas.setPaint(highlightColor);
             }
-            if(chosenPoint == point)
+            if (chosenPoint == point)
             {
                 canvas.setColor(chosenColor);
                 canvas.setPaint(chosenColor);
@@ -270,29 +276,31 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
             canvas.setPaint(defaultColor);
         }
     }
+
     private double calcArea(ArrayList<Double[]> polygon)
     {
         double sum = 0.0;
-        for (int i = 2; i < polygon.size()-3;i++)
-            sum += 2*polygon.get(i)[1];
+        for (int i = 2; i < polygon.size() - 3; i++)
+            sum += 2 * polygon.get(i)[1];
         sum += polygon.get(1)[1];
-        sum += polygon.get(polygon.size()-2)[1];
-        return (polygon.get(2)[0]-polygon.get(1)[0])/2*sum;
+        sum += polygon.get(polygon.size() - 2)[1];
+        return (polygon.get(2)[0] - polygon.get(1)[0]) / 2 * sum;
     }
+
     protected void paintFilling(Graphics2D canvas)
     {
         ArrayList<Double[]> points = new ArrayList<>(Arrays.asList(graphicsData));
         ArrayList<Integer> zeroes = new ArrayList<>();
 
         int i = 0;
-        while (i < points.size()-1)
+        while (i < points.size() - 1)
         {
             Double x1 = points.get(i)[0];
-            Double x2 = points.get(i+1)[0];
+            Double x2 = points.get(i + 1)[0];
             Double y1 = points.get(i)[1];
-            Double y2 = points.get(i+1)[1];
-            if(Math.signum(y2)==0.0)
-                zeroes.add(i+2);
+            Double y2 = points.get(i + 1)[1];
+            if (Math.signum(y2) == 0.0)
+                zeroes.add(i + 2);
             if (Math.signum(y1) * Math.signum(y2) == -1.0)
             {
                 zeroes.add(i);
@@ -300,14 +308,14 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
             }
             i++;
         }
-        points.add(0,new Double[]{points.get(0)[0],0.0});
-        zeroes.add(0,0);
-        points.add(new Double[]{points.get(points.size()-1)[0],0.0});
-        zeroes.add(points.size()-1);
+        points.add(0, new Double[]{points.get(0)[0], 0.0});
+        zeroes.add(0, 0);
+        points.add(new Double[]{points.get(points.size() - 1)[0], 0.0});
+        zeroes.add(points.size() - 1);
         ArrayList<ArrayList<Double[]>> polygons = new ArrayList<>();
 
-        for(int in = 0; in < zeroes.size()-1; in++)
-            polygons.add(new ArrayList<>(points.subList(zeroes.get(in),zeroes.get(in + 1)+1)));
+        for (int in = 0; in < zeroes.size() - 1; in++)
+            polygons.add(new ArrayList<>(points.subList(zeroes.get(in), zeroes.get(in + 1) + 1)));
 
         for (ArrayList<Double[]> polygon : polygons)
         {
@@ -317,13 +325,12 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
             boolean firstPoint = true;
             for (Double[] point : polygon)
             {
-                Point2D.Double p = xyToPoint(point[0],point[1]);
-                if(firstPoint)
+                Point2D.Double p = xyToPoint(point[0], point[1]);
+                if (firstPoint)
                 {
                     gp.moveTo(p.x, p.y);
                     firstPoint = false;
-                }
-                else gp.lineTo(p.x,p.y);
+                } else gp.lineTo(p.x, p.y);
             }
             gp.closePath();
             canvas.setStroke(graphicsStroke);
@@ -332,21 +339,22 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
             canvas.setColor(Color.GREEN);
             canvas.fill(gp);
             Rectangle2D bounds = gp.getBounds2D();
-            double y = bounds.getMaxY() - (bounds.getMaxY() - bounds.getMinY())/2;
-            double delta = (bounds.getMaxX()-bounds.getMinX())/10;
-            for(double x = bounds.getMinX()+2*delta; x <= bounds.getMaxX(); x += delta)
+            double y = bounds.getMaxY() - (bounds.getMaxY() - bounds.getMinY()) / 2;
+            double delta = (bounds.getMaxX() - bounds.getMinX()) / 10;
+            for (double x = bounds.getMinX() + 2 * delta; x <= bounds.getMaxX(); x += delta)
             {
-                if(gp.contains(x,y))
+                if (gp.contains(x, y))
                 {
                     canvas.setFont(axisFont);
                     canvas.setColor(Color.BLACK);
-                    canvas.drawString(formatter.format(area),(float) x,(float) y);
+                    canvas.drawString(formatter.format(area), (float) x, (float) y);
                     break;
                 }
             }
 
         }
     }
+
     // Метод, обеспечивающий отображение осей координат
     protected void paintAxis(Graphics2D canvas)
     {
@@ -452,45 +460,79 @@ public class GraphicsDisplay extends JPanel implements MouseMotionListener
         this.showFilling = showFilling;
         repaint();
     }
+
     private Double[] pointToXY(Point p)
     {
-        return new Double[]{p.x/scale+minX,maxY-p.y/scale};
-    }
-    @Override
-    public void mouseDragged(MouseEvent e)
-    {
-
+        return new Double[]{p.x / scale + minX, maxY - p.y / scale};
     }
 
-    @Override
-    public void mouseMoved(MouseEvent e)
-    {
-        setCursor(defaultCursor);
-        chosenPoint =null;
-        int mouseX = e.getX();
-        int mouseY = e.getY();
-        int pointX;
-        int pointY;
-        if(graphicsData!=null)
-        {
-            for (Double[] xy : graphicsData)
-            {
-                Point2D.Double point = xyToPoint(xy[0], xy[1]);
-                pointX = (int) point.x;
-                pointY = (int) point.y;
-                if (Math.abs(mouseX - pointX) <= 5 && Math.abs(mouseY - pointY) <= 5)
-                {
-                    chosenPoint = xy;
-                    setCursor(pointCursor);
-                    break;
-                }
-            }
-
-        }
-        repaint();
-    }
     public Double[][] getGraphicsData()
     {
         return graphicsData;
+    }
+
+    private class TMouseAdapter extends MouseAdapter
+    {
+        @Override
+
+        public void mousePressed(MouseEvent ev)
+        {
+            if (SwingUtilities.isLeftMouseButton(ev) && chosenPoint!=null)
+            {
+                selection = true;
+            }
+        }
+
+        @Override
+        public void mouseReleased(MouseEvent ev)
+        {
+            if (SwingUtilities.isLeftMouseButton(ev))
+            {
+                selection = false;
+            }
+        }
+    }
+
+    private class TMouseMotionListener implements MouseMotionListener
+    {
+        @Override
+        public void mouseDragged(MouseEvent e)
+        {
+            if (selection)
+            {
+                System.out.println("3");
+                Double[] xy = pointToXY(e.getPoint());
+                chosenPoint[0] = xy[0];
+                chosenPoint[1] = xy[1];
+            }
+            repaint();
+        }
+
+        @Override
+        public void mouseMoved(MouseEvent e)
+        {
+            setCursor(defaultCursor);
+            chosenPoint = null;
+            int mouseX = e.getX();
+            int mouseY = e.getY();
+            int pointX;
+            int pointY;
+            if (graphicsData != null)
+            {
+                for (Double[] xy : graphicsData)
+                {
+                    Point2D.Double point = xyToPoint(xy[0], xy[1]);
+                    pointX = (int) point.x;
+                    pointY = (int) point.y;
+                    if (Math.abs(mouseX - pointX) <= 5 && Math.abs(mouseY - pointY) <= 5)
+                    {
+                        chosenPoint = xy;
+                        setCursor(pointCursor);
+                        break;
+                    }
+                }
+            }
+            repaint();
+        }
     }
 }
